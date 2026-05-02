@@ -1,0 +1,121 @@
+{
+  "name": "@ageniti/core",
+  "version": "0.1.0",
+  "description": "Expose React and TypeScript app actions as CLI, HTTP, MCP, OpenAI, and AI SDK tools without restructuring your app.",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "author": "Ageniti contributors",
+  "homepage": "https://github.com/Ageniti/ageniti#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ageniti/ageniti.git",
+    "directory": "ageniti"
+  },
+  "bugs": {
+    "url": "https://github.com/Ageniti/ageniti/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "bin": {
+    "ageniti": "bin/ageniti.mjs"
+  },
+  "keywords": [
+    "agents",
+    "mcp",
+    "cli",
+    "actions",
+    "react",
+    "automation",
+    "tools"
+  ],
+  "sideEffects": false,
+  "types": "./src/index.d.ts",
+  "files": [
+    "bin",
+    "assets",
+    "src",
+    "examples",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./ai-sdk": {
+      "types": "./src/index.d.ts",
+      "default": "./src/ai-sdk.js"
+    },
+    "./adapters": {
+      "types": "./src/index.d.ts",
+      "default": "./src/adapters.js"
+    },
+    "./app": {
+      "types": "./src/index.d.ts",
+      "default": "./src/app.js"
+    },
+    "./cli": {
+      "types": "./src/index.d.ts",
+      "default": "./src/cli.js"
+    },
+    "./core": {
+      "types": "./src/index.d.ts",
+      "default": "./src/core.js"
+    },
+    "./dev": {
+      "types": "./src/index.d.ts",
+      "default": "./src/dev-server.js"
+    },
+    "./http": {
+      "types": "./src/index.d.ts",
+      "default": "./src/http.js"
+    },
+    "./manifest": {
+      "types": "./src/index.d.ts",
+      "default": "./src/manifest.js"
+    },
+    "./json-runner": {
+      "types": "./src/index.d.ts",
+      "default": "./src/json-runner.js"
+    },
+    "./lint": {
+      "types": "./src/index.d.ts",
+      "default": "./src/lint.js"
+    },
+    "./mcp": {
+      "types": "./src/index.d.ts",
+      "default": "./src/mcp.js"
+    },
+    "./react": {
+      "types": "./src/index.d.ts",
+      "default": "./src/react.js"
+    },
+    "./schema": {
+      "types": "./src/index.d.ts",
+      "default": "./src/schema.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "test": "node --test",
+    "prepack": "npm test",
+    "pack:dry": "npm pack --dry-run",
+    "example": "node examples/hello.cli.js",
+    "demo": "node examples/demo.cli.js",
+    "demo:dev": "node examples/demo.cli.js dev --port 4321",
+    "demo:mcp": "node examples/demo.cli.js mcp --stdio",
+    "example:schema": "node examples/hello.cli.js hello --schema",
+    "example:mcp": "node examples/hello.cli.js mcp"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

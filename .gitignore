@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+
+*.tgz
+*.log
+.DS_Store
+
+.env
+.env.*
+!.env.example
+
+.idea/
+.vscode/
