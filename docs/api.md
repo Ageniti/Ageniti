@@ -335,6 +335,8 @@ Supported targets:
 - `README.md`
 - `ageniti.bundle.json`
 
+The generated `README.md` is intentionally part of the app bundle. It tells downstream users how to run the CLI locally, package the app with `npm pack`, publish it to npm, connect the MCP stdio server from local paths or installed bins, and mount HTTP through your own backend.
+
 ### `app.createGuideDoc(options)`
 
 Returns one Markdown guide string.
@@ -392,6 +394,12 @@ Important defaults:
 
 - `dryRun` defaults to `true`
 - pass `dryRun: false` only for a real publish
+
+Deployment shapes:
+
+- CLI package: build or publish the bundle and expose the generated npm `bin`.
+- MCP server: use `mcp-stdio.mjs` locally or the generated `<bin-name>-mcp` executable after install.
+- HTTP gateway: deploy your own server and mount `app.createHttpHandler()`; Ageniti does not force a hosted runtime.
 
 ## Project Tools
 

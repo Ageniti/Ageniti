@@ -10,6 +10,7 @@ Release hardening update for public SDK distribution.
 - Host starter templates for OpenAI Responses, AI SDK, MCP, and HTTP gateway usage.
 - Runnable host examples backed by a shared task app.
 - Shared exposure policy helper for external surfaces.
+- Generated bundle README deployment instructions for CLI, MCP, npm package, and HTTP gateway usage.
 
 ### Fixed
 

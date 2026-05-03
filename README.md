@@ -428,7 +428,7 @@ task-app publish --app-module ./src/ageniti/app.js --app-export app --out-dir ./
 - `README.md`
 - `ageniti.bundle.json`
 
-You can then run:
+You can then run the generated surfaces locally:
 
 ```text
 node ./dist/ageniti/cli.mjs
@@ -442,6 +442,15 @@ task-app package --app-module ./src/ageniti/app.js --app-export app --out-dir ./
 ```
 
 That command runs `npm pack` inside the generated bundle directory and leaves a `.tgz` artifact next to the launchers.
+
+The generated `dist/ageniti/README.md` is part of the output and explains how downstream users deploy the app surfaces:
+
+- run the CLI directly with `node ./cli.mjs`
+- package and test with `npm pack`
+- install the tarball globally and run `<bin-name>` / `<bin-name>-mcp`
+- publish to npm with `npm publish --access public`
+- connect MCP clients with either `node ./mcp-stdio.mjs` or the published MCP bin
+- mount HTTP from your own backend with `app.createHttpHandler()`
 
 For a final publish rehearsal or a real release:
 

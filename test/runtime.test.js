@@ -373,6 +373,9 @@ test("app build writes official bundle artifacts", async () => {
   const bundleReadme = await readFile(path.join(outDir, "README.md"), "utf8");
   assert.match(bundleReadme, /Ageniti Bundle/);
   assert.match(bundleReadme, /npm pack/);
+  assert.match(bundleReadme, /Publish To npm/);
+  assert.match(bundleReadme, /Connect As MCP/);
+  assert.match(bundleReadme, /HTTP Deployment/);
   const guideDoc = await readFile(path.join(outDir, "GUIDE.md"), "utf8");
   assert.match(guideDoc, /Available Actions/);
 });

@@ -129,3 +129,9 @@ hello-tool publish
 `docs` prints or exports a single `GUIDE.md` generated from your app-level and action-level natural-language descriptions.
 `package` builds the bundle and runs `npm pack` in the output directory so you get a distributable `.tgz`.
 `publish` performs an npm publish dry-run by default. Use live publish only when you are ready to release for real.
+
+The generated bundle includes its own `README.md` with deployment instructions. In practice, users ship one of these shapes:
+
+- CLI: publish the generated npm package, then users run the package bin.
+- MCP: point the MCP client at `node ./mcp-stdio.mjs` locally, or at the published `<bin-name>-mcp` command after npm install.
+- HTTP: deploy your own backend and mount `app.createHttpHandler()` so your existing auth, sessions, and infrastructure stay in charge.

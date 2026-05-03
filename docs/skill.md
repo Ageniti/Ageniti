@@ -181,6 +181,14 @@ task-app publish --app-module ./src/ageniti/app.js --app-export app --out-dir ./
 
 The generated npm package is an app distribution package containing runnable CLI and MCP launchers plus manifests and documentation.
 
+The generated bundle `README.md` is part of the product contract. It explains:
+
+- how to run the CLI and MCP launchers locally
+- how to create a tarball with `npm pack`
+- how to publish the app package to npm
+- how an MCP client should call either `node ./mcp-stdio.mjs` or the installed `<bin-name>-mcp`
+- why HTTP deployment belongs in the user's own backend via `app.createHttpHandler()`
+
 ## Contract Maintenance
 
 Use `version`, `deprecated`, and `deprecation` on actions to communicate compatibility changes. Use `diffActionManifests(previousManifest, nextManifest)` or the CLI `diff --previous old.json --next new.json` command before publishing changes.
