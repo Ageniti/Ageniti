@@ -35,6 +35,9 @@ import {
 const execFileAsync = promisify(execFile);
 const packageDir = path.dirname(fileURLToPath(import.meta.url));
 const buildableAppModule = path.join(packageDir, "..", "examples", "buildable-app.mjs");
+const skipNpmPublishTests = process.env.AGENITI_SKIP_NPM_PUBLISH_TEST === "1"
+  ? "Skipped in CI to avoid npm registry/network flakes."
+  : false;
 
 const add = defineAction({
   name: "add_numbers",
@@ -434,7 +437,7 @@ test("packageArtifacts creates a distributable npm tarball", async () => {
   assert.equal(descriptor.snippets.codex.mcpServers["math-server"].args[0], "./mcp-stdio.mjs");
 });
 
-test("publishArtifacts performs an npm publish dry-run", async () => {
+test("publishArtifacts performs an npm publish dry-run", { skip: skipNpmPublishTests }, async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ageniti-publish-"));
   const outDir = path.join(tempDir, "bundle");
 
@@ -723,7 +726,7 @@ test("cli package creates a bundle tarball", async () => {
   assert.match(result.packageFile, /math-ageniti-0\.0\.0\.tgz$/);
 });
 
-test("cli publish performs a dry-run by default", async () => {
+test("cli publish performs a dry-run by default", { skip: skipNpmPublishTests }, async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ageniti-cli-publish-"));
   const output = [];
   const errors = [];

@@ -104,9 +104,10 @@
     "./package.json": "./package.json"
   },
   "scripts": {
+    "ci": "AGENITI_SKIP_NPM_PUBLISH_TEST=1 npm test && npm pack --dry-run --ignore-scripts --cache ./.npm-cache",
     "test": "node --test",
     "prepack": "npm test",
-    "pack:dry": "npm pack --dry-run",
+    "pack:dry": "npm test && npm pack --dry-run --ignore-scripts --cache ./.npm-cache",
     "example": "node examples/hello.cli.js",
     "demo": "node examples/demo.cli.js",
     "demo:dev": "node examples/demo.cli.js dev --port 4321",
