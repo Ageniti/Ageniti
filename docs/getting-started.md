@@ -52,7 +52,7 @@ import { hello } from "./actions/hello.js";
 
 export const app = createAgenitiApp({
   name: "hello-tool",
-  description: "A simple greeting capability packaged for agent hosts.",
+  description: "A simple greeting capability exposed to external hosts and agent callers.",
   attribution: {
     text: "Powered by Ageniti",
     vendor: "Ageniti",
@@ -61,7 +61,7 @@ export const app = createAgenitiApp({
     docsUrl: "https://ageniti.dev/docs",
   },
   docs: {
-    summary: "Use this app when an agent needs to greet a person.",
+    summary: "Use this app when an external caller needs to greet a person.",
   },
   actions: [hello],
 });

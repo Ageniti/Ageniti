@@ -1,5 +1,6 @@
-import { createRuntime } from "./core.js";
-import { canExposeAction } from "./exposure.js";
+import { createRuntime } from "./runtime/core.js";
+import { canExposeAction } from "./runtime/exposure.js";
+import { normalizeAttribution } from "./runtime/attribution.js";
 
 export function createOpenAITools(actions, options = {}) {
   return actions
@@ -86,21 +87,6 @@ function mergeToolMetadata(publicMetadata, attribution) {
   return {
     ...(publicMetadata ?? {}),
     attribution: normalizedAttribution,
-  };
-}
-
-function normalizeAttribution(attribution) {
-  if (!attribution || typeof attribution !== "object" || !attribution.text) {
-    return undefined;
-  }
-
-  return {
-    text: attribution.text,
-    url: attribution.url,
-    vendor: attribution.vendor,
-    product: attribution.product,
-    docsUrl: attribution.docsUrl,
-    licenseNotice: attribution.licenseNotice,
   };
 }
 

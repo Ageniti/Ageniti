@@ -5,16 +5,16 @@ import {
   createOpenAIResponsesTools,
   createOpenAITools,
 } from "./ai-sdk.js";
-import { buildArtifacts, packageArtifacts, publishArtifacts } from "./build.js";
-import { createCli } from "./cli.js";
-import { createRuntime } from "./core.js";
+import { buildArtifacts, packageArtifacts, publishArtifacts } from "./tooling/build.js";
+import { createCli } from "./tooling/cli.js";
+import { createRuntime } from "./runtime/core.js";
 import { createDevServer } from "./dev-server.js";
-import { createGuideDoc, exportDocs } from "./docs-export.js";
-import { createHttpHandler, createHttpServer } from "./http.js";
+import { createGuideDoc, exportDocs } from "./tooling/docs-export.js";
+import { createHttpHandler, createHttpServer } from "./transports/http.js";
 import { createJsonRunner } from "./json-runner.js";
-import { lintActions } from "./lint.js";
-import { createSurfaceManifest } from "./manifest.js";
-import { createMcpHandler, createMcpManifest } from "./mcp.js";
+import { lintActions } from "./tooling/lint.js";
+import { createActionManifest, createSurfaceManifest } from "./runtime/manifest.js";
+import { createMcpHandler, createMcpManifest } from "./transports/mcp.js";
 import { createReactActionAdapter } from "./react.js";
 
 export function createAgenitiApp(options) {
@@ -22,47 +22,60 @@ export function createAgenitiApp(options) {
     throw new TypeError("createAgenitiApp() requires an app name.");
   }
 
-  const actions = options.actions ?? [];
-  const adapters = options.adapters ?? defaultSurfaceAdapters();
-  const buildOptions = options.build ?? {};
-  const appDescription = options.description;
-  const appDocs = options.docs ?? {};
-  const attribution = options.attribution;
-  const runtime = options.runtime ?? createRuntime({
-    actions,
-    services: options.services,
-    permissionChecker: options.permissionChecker,
-    middleware: options.middleware,
+  const {
+    name,
+    description: appDescription,
+    docs: appDocs = {},
+    attribution,
+    adapters = defaultSurfaceAdapters(),
+    build: buildOptions = {},
+    actions: providedActions,
+    runtime: providedRuntime,
+    services,
+    permissionChecker,
+    middleware,
+    hooks,
+    redact,
+    idempotencyCache,
+    idempotencyTtlMs,
+    idempotencyMaxEntries,
+  } = options;
+  const runtime = providedRuntime ?? createRuntime({
+    actions: providedActions ?? [],
+    services,
+    permissionChecker,
+    middleware,
+    hooks,
+    redact,
+    idempotencyCache,
+    idempotencyTtlMs,
+    idempotencyMaxEntries,
   });
+  const actions = providedActions ?? Array.from(runtime.registry.values());
 
   return {
-    name: options.name,
+    name,
     actions,
     adapters,
     runtime,
-    manifest() {
+    manifest(manifestOptions = {}) {
       return createSurfaceManifest({
-        appName: options.name,
+        appName: name,
         actions,
         adapters,
         attribution,
+        ...manifestOptions,
       });
     },
     lint() {
       return lintActions(actions);
     },
     actionManifest(manifestOptions) {
-      return createSurfaceManifest({
-        appName: options.name,
-        actions,
-        adapters,
-        attribution,
-        ...manifestOptions,
-      }).actions;
+      return createActionManifest(actions, manifestOptions);
     },
     createCli(cliOptions = {}) {
       return createCli({
-        name: options.name,
+        name,
         actions,
         runtime,
         adapters,
@@ -81,8 +94,11 @@ export function createAgenitiApp(options) {
         ...mcpOptions,
       });
     },
-    createMcpManifest() {
-      return createMcpManifest(actions, { attribution });
+    createMcpManifest(manifestOptions = {}) {
+      return createMcpManifest(actions, {
+        attribution,
+        ...manifestOptions,
+      });
     },
     createJsonRunner(jsonOptions = {}) {
       return createJsonRunner({
@@ -148,7 +164,7 @@ export function createAgenitiApp(options) {
     },
     createGuideDoc(docOptions = {}) {
       return createGuideDoc({
-        appName: options.name,
+        appName: name,
         appDescription,
         docs: appDocs,
         actions,
@@ -158,7 +174,7 @@ export function createAgenitiApp(options) {
     },
     exportDocs(docOptions = {}) {
       return exportDocs({
-        appName: options.name,
+        appName: name,
         appDescription,
         docs: appDocs,
         actions,
@@ -168,7 +184,7 @@ export function createAgenitiApp(options) {
     },
     build(artifactOptions = {}) {
       return buildArtifacts({
-        appName: options.name,
+        appName: name,
         appDescription,
         docs: appDocs,
         actions,
@@ -180,7 +196,7 @@ export function createAgenitiApp(options) {
     },
     package(packageOptions = {}) {
       return packageArtifacts({
-        appName: options.name,
+        appName: name,
         appDescription,
         docs: appDocs,
         actions,
@@ -192,7 +208,7 @@ export function createAgenitiApp(options) {
     },
     publish(publishOptions = {}) {
       return publishArtifacts({
-        appName: options.name,
+        appName: name,
         appDescription,
         docs: appDocs,
         actions,

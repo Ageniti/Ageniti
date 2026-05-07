@@ -1,8 +1,7 @@
-import { createRuntime } from "./core.js";
+import { resolveRuntimeAndActions } from "./transports/surface-utils.js";
 
 export function createJsonRunner(options) {
-  const actions = options.actions ?? [];
-  const runtime = options.runtime ?? createRuntime({ actions, ...options.runtimeOptions });
+  const { runtime } = resolveRuntimeAndActions(options);
 
   return {
     runtime,
@@ -25,7 +24,9 @@ export function createJsonRunner(options) {
         };
       }
 
-      return runtime.invoke(payload.action, payload.input ?? {}, {
+      // Preserve `null` and other primitive root inputs — only fall back to {} when omitted.
+      const rawInput = "input" in payload ? payload.input : {};
+      return runtime.invoke(payload.action, rawInput, {
         surface: "json",
         confirm: payload.confirm,
         user: payload.user,

@@ -1,15 +1,16 @@
 import http from "node:http";
-import { createActionManifest } from "./manifest.js";
-import { parseRequestBody, sendJson, sendText } from "./http.js";
+import { createActionManifest } from "./runtime/manifest.js";
+import { parseRequestBody, sendJson, sendText } from "./transports/http.js";
 
 export function createDevServer(options) {
   const name = options.name ?? "Ageniti";
-  const actions = options.actions ?? [];
   const runtime = options.runtime;
 
   if (!runtime) {
     throw new TypeError("createDevServer() requires a runtime.");
   }
+
+  const actions = options.actions ?? Array.from(runtime.registry.values());
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -31,7 +32,9 @@ export function createDevServer(options) {
       if (request.method === "POST" && url.pathname.startsWith("/api/actions/") && url.pathname.endsWith("/invoke")) {
         const actionName = decodeURIComponent(url.pathname.split("/")[3]);
         const body = await parseRequestBody(request);
-        const result = await runtime.invoke(actionName, body.input ?? {}, {
+        // Preserve `null` and other primitive root inputs.
+        const rawInput = body && typeof body === "object" && "input" in body ? body.input : {};
+        const result = await runtime.invoke(actionName, rawInput, {
           surface: "dev",
           confirm: body.confirm === true,
           user: body.user,

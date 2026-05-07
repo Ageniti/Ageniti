@@ -25,8 +25,9 @@ jobs:
 
       - name: Run tests
         run: npm test
-        env:
-          AGENITI_SKIP_NPM_PUBLISH_TEST: "1"
 
       - name: Verify package contents
         run: npm pack --dry-run --ignore-scripts --cache ./.npm-cache
+
+      - name: Smoke test published CLI entry
+        run: node bin/ageniti.mjs --help

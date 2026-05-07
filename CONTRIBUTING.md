@@ -12,13 +12,13 @@ node examples/demo.cli.js dev --port 4321
 
 ## Design Principles
 
-- Build for agent-facing apps, not agents.
+- Build SDKs that expose app capabilities to agents, not agents themselves.
 - Keep existing React app structures intact.
 - Keep the app action runtime headless.
 - Keep React as an invocation adapter, not a dependency of the core.
 - Generate CLI, MCP, and AI tools from explicit action contracts.
 - Prefer explicit action exposure over automatic discovery.
-- Keep agent-facing output structured and stable.
+- Keep external, agent-callable output structured and stable.
 - Avoid orchestration, planning, memory, hosted runtime, marketplace, and workflow engine scope.
 
 ## Pull Request Checklist

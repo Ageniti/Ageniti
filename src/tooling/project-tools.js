@@ -36,7 +36,7 @@ const configCandidates = [
   "ageniti.config.cjs",
 ];
 
-const initTemplates = ["react", "expo", "next", "host-openai", "host-ai-sdk", "host-mcp", "host-http"];
+export const initTemplates = ["react", "expo", "next", "host-openai", "host-ai-sdk", "host-mcp", "host-http"];
 
 export async function findDefaultAppModule(options = {}) {
   const cwd = options.cwd ?? process.cwd();
@@ -568,13 +568,13 @@ if (import.meta.url === \`file://\${process.argv[1]}\`) {
   const invoke = await handle({
     method: "POST",
     url: "/ageniti/actions/create_task/invoke",
+    auth: {
+      permissions: ["task:create"],
+    },
     body: {
       input: {
         title: "Write the release review summary",
         priority: "high",
-      },
-      auth: {
-        permissions: ["task:create"],
       },
     },
   });

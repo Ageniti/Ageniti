@@ -1,4 +1,4 @@
-import { canExposeAction } from "./exposure.js";
+import { canExposeAction } from "./runtime/exposure.js";
 
 export function defineSurfaceAdapter(adapter) {
   if (!adapter?.name) {

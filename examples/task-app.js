@@ -81,7 +81,7 @@ const deleteTask = defineAction({
 export function createTaskApp() {
   return createAgenitiApp({
     name: "task-app",
-    description: "Workspace task operations packaged for agent hosts.",
+    description: "Workspace task operations exposed to external hosts and agent callers.",
     docs: {
       summary: "Use this app when a host needs task search and creation tools.",
       audience: "Agent hosts, automation scripts, and internal operator tools.",

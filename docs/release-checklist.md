@@ -9,6 +9,8 @@ Before publishing:
 - Confirm docs do not promise workflow orchestration, hosted runtime, marketplace, or agent planning.
 - Run `npm test`.
 - Run `npm pack --dry-run`.
+- Run `node bin/ageniti.mjs --help`.
+- Install the packed tarball in a temp directory and run `ageniti --help`.
 - Review `README.md`.
 - Review `CHANGELOG.md`.
 - Review generated type declarations.
@@ -23,6 +25,7 @@ Recommended commands:
 ```text
 npm test
 npm pack --dry-run
+node bin/ageniti.mjs --help
 npm publish --dry-run --access public --registry=https://registry.npmjs.org
 node examples/demo.cli.js search-tasks --status open
 npm run example:responses

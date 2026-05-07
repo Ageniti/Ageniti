@@ -1,3 +1,5 @@
+import { wrapSchema as wrapForeignSchema } from "./schema-adapter.js";
+
 const TYPE_SYMBOL = Symbol.for("ageniti.schema");
 
 export class SchemaValidationError extends Error {
@@ -313,10 +315,15 @@ class ObjectSchema extends BaseSchema {
     super("object");
     this.shape = shape;
     this.allowAdditionalProperties = Boolean(options.allowAdditionalProperties);
+    this.strictMode = Boolean(options.strictMode);
   }
 
   passthrough() {
-    return cloneSchema(this, { allowAdditionalProperties: true });
+    return cloneSchema(this, { allowAdditionalProperties: true, strictMode: false });
+  }
+
+  strict() {
+    return cloneSchema(this, { strictMode: true, allowAdditionalProperties: false });
   }
 
   _validate(value, path) {
@@ -335,6 +342,14 @@ class ObjectSchema extends BaseSchema {
         }
       } else {
         issues.push(...result.issues);
+      }
+    }
+
+    if (this.strictMode) {
+      for (const key of Object.keys(value)) {
+        if (!(key in this.shape)) {
+          issues.push({ path: [...path, key], message: `Unexpected property "${key}".` });
+        }
       }
     }
 
@@ -378,6 +393,11 @@ class LiteralSchema extends BaseSchema {
   constructor(literal) {
     super("literal");
     this.literal = literal;
+    // A literal whose value is `null` or `undefined` must accept that value
+    // through the BaseSchema null/undefined gates. Without this, the gates
+    // reject before _validate runs.
+    if (literal === null) this.isNullable = true;
+    if (literal === undefined) this.isOptional = true;
   }
 
   _validate(value, path) {
@@ -500,11 +520,21 @@ export function isSchema(value) {
 }
 
 export function assertSchema(value, message = "Expected schema.") {
-  if (!isSchema(value)) {
-    throw new TypeError(message);
+  if (isSchema(value)) return value;
+
+  // Foreign schemas (Zod, Standard Schema v1) are wrapped so users keep
+  // whatever schema system they already have.
+  if (value && typeof value === "object") {
+    if (
+      typeof value.safeParse === "function" ||
+      typeof value.parse === "function" ||
+      value["~standard"]?.validate
+    ) {
+      return wrapForeignSchema(value);
+    }
   }
 
-  return value;
+  throw new TypeError(message);
 }
 
 export function toJSONSchema(schema) {

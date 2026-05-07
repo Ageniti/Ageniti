@@ -47,12 +47,23 @@ export interface BooleanSchema extends Schema<boolean> {}
 export interface EnumSchema<T extends readonly JsonPrimitive[]> extends Schema<T[number]> {}
 export interface ArraySchema<T> extends Schema<T[]> {}
 export interface ObjectSchema<T extends Record<string, unknown>> extends Schema<T> {
-  shape: Record<string, Schema>;
+  shape: { [K in keyof T]: Schema<T[K]> };
   passthrough(): this;
+  strict(): this;
 }
 export interface LiteralSchema<T extends JsonPrimitive> extends Schema<T> {}
 export interface UnionSchema<T> extends Schema<T> {}
 export interface RecordSchema<T> extends Schema<Record<string, T>> {}
+
+// Extract the static type carried by a Schema.
+export type Infer<S> =
+  S extends Schema<infer T> ? T :
+  // Zod-style schema duck-typing
+  S extends { _output: infer T } ? T :
+  S extends { _type: infer T } ? T :
+  // Standard Schema v1
+  S extends { "~standard": { types: { output: infer T } } } ? T :
+  unknown;
 
 export const s: {
   string(): StringSchema;
@@ -63,7 +74,9 @@ export const s: {
   literal<T extends JsonPrimitive>(value: T): LiteralSchema<T>;
   union<T extends readonly Schema[]>(options: T): UnionSchema<unknown>;
   record<T>(valueSchema: Schema<T>): RecordSchema<T>;
-  object<T extends Record<string, Schema>>(shape: T): ObjectSchema<{ [K in keyof T]: unknown }>;
+  // Infer field types from each property's schema so `defineAction({ input: s.object({ a: s.string() }) }).run`
+  // gets `{ a: string }` for free.
+  object<T extends Record<string, Schema<any>>>(shape: T): ObjectSchema<{ [K in keyof T]: T[K] extends Schema<infer U> ? U : never }>;
   any(): Schema<unknown>;
 };
 
@@ -74,7 +87,7 @@ export class SchemaValidationError extends Error {
 
 export function toJSONSchema(schema: Schema): JsonObject;
 
-export type SurfaceName = "cli" | "json" | "mcp" | "react" | "dev" | string;
+export type SurfaceName = "cli" | "json" | "http" | "mcp" | "react" | "dev" | "ai-sdk" | string;
 export type Visibility = "private" | "local" | "public" | string;
 export type SideEffects = "read" | "write" | "destructive" | string;
 export type Idempotency = "idempotent" | "non_idempotent" | "conditional" | "unspecified" | string;
@@ -178,6 +191,7 @@ export interface ActionConfig<I = unknown, O = unknown> {
   supportedSurfaces?: SurfaceName[];
   timeoutMs?: number;
   retry?: boolean | RetryPolicy;
+  concurrency?: number | { max?: number };
   requiresConfirmation?: boolean;
   metadata?: Record<string, unknown>;
   publicMetadata?: Record<string, unknown>;
@@ -189,16 +203,57 @@ export interface ActionConfig<I = unknown, O = unknown> {
   run(input: I, context: ActionContext): O | Promise<O>;
 }
 
-export interface Action<I = unknown, O = unknown> extends Required<Omit<ActionConfig<I, O>, "input" | "output" | "timeoutMs" | "retry" | "run" | "deprecation" | "deprecationMessage" | "replacement">> {
+export interface Action<I = unknown, O = unknown> extends Required<Omit<ActionConfig<I, O>, "input" | "output" | "timeoutMs" | "retry" | "concurrency" | "run" | "deprecation" | "deprecationMessage" | "replacement">> {
   input: Schema<I>;
   output?: Schema<O>;
   timeoutMs?: number;
   retry: Required<RetryPolicy>;
+  concurrency: { max: number };
   deprecation?: { message?: string; since?: string; removeAfter?: string; replacement?: string };
   run(input: I, context: ActionContext): O | Promise<O>;
 }
 
+// Two overloads: pass schemas to get full inference, or pass generics manually.
+export function defineAction<S, OS = undefined, O = OS extends undefined ? unknown : Infer<OS>>(
+  config: Omit<ActionConfig<Infer<S>, O>, "input" | "output"> & {
+    input?: S;
+    output?: OS;
+    run(input: Infer<S>, context: ActionContext): O | Promise<O>;
+    concurrency?: number | { max?: number };
+  },
+): Action<Infer<S>, O>;
 export function defineAction<I = unknown, O = unknown>(config: ActionConfig<I, O>): Action<I, O>;
+
+// ---------- Bulk-registration helpers ----------
+
+export function actionFromHandler<I = unknown, O = unknown>(
+  handler: (input: I, context?: ActionContext) => O | Promise<O>,
+  config: Omit<ActionConfig<I, O>, "run">,
+): Action<I, O>;
+
+export function defineActions(
+  map: Record<string, ActionConfig<any, any> | ((input: any, ctx?: ActionContext) => any)>,
+  options?: {
+    defaults?: Partial<Omit<ActionConfig, "name" | "run">>;
+    rename?: (key: string) => string;
+  },
+): Action[];
+
+export function actionsFromHandlers(
+  handlers: Record<string, (input: any, ctx?: ActionContext) => any>,
+  metadata?: Record<string, Partial<Omit<ActionConfig, "name" | "run">>>,
+): Action[];
+
+// ---------- Foreign schema interop ----------
+
+export interface WrapSchemaOptions {
+  jsonSchema?: JsonObject;
+  description?: string;
+}
+
+export function wrapSchema(schema: unknown, options?: WrapSchemaOptions): Schema;
+export function isZodLike(value: unknown): boolean;
+export function isStandardSchemaV1(value: unknown): boolean;
 
 export class AgenitiError extends Error {
   code: string;
@@ -218,6 +273,7 @@ export interface RuntimeSuccess<T = unknown> {
     invocationId: string;
     surface: SurfaceName;
     durationMs: number;
+    idempotent?: "replayed";
   };
 }
 
@@ -236,10 +292,17 @@ export interface RuntimeFailure {
     invocationId?: string;
     surface?: SurfaceName;
     durationMs: number;
+    idempotent?: "replayed";
   };
 }
 
 export type RuntimeResult<T = unknown> = RuntimeSuccess<T> | RuntimeFailure;
+
+export type RuntimeStreamEvent<T = unknown> =
+  | { type: "log"; level: string; message: string; time: string; fields: Record<string, unknown> }
+  | { type: "artifact"; artifact: Artifact }
+  | { type: "progress"; message?: string; percent?: number; fields?: Record<string, unknown>; time: string }
+  | { type: "result"; envelope: RuntimeResult<T> };
 
 export interface RuntimeInvokeOptions {
   invocationId?: string;
@@ -253,12 +316,14 @@ export interface RuntimeInvokeOptions {
   timeoutMs?: number;
   retry?: RetryPolicy;
   confirm?: boolean;
+  idempotencyKey?: string;
 }
 
 export interface ActionRuntime {
   registry: Map<string, Action>;
   listActions(options?: { surface?: SurfaceName }): Action[];
   invoke<T = unknown>(actionOrName: string | Action, input?: unknown, options?: RuntimeInvokeOptions): Promise<RuntimeResult<T>>;
+  stream<T = unknown>(actionOrName: string | Action, input?: unknown, options?: RuntimeInvokeOptions): AsyncIterableIterator<RuntimeStreamEvent<T>>;
 }
 
 export interface RuntimeOptions {
@@ -266,6 +331,14 @@ export interface RuntimeOptions {
   services?: Record<string, unknown>;
   permissionChecker?: (request: { action: Action; input: unknown; context: ActionContext }) => boolean | string | Promise<boolean | string>;
   middleware?: Array<(request: { action: Action; input: unknown; context: ActionContext; next: () => Promise<unknown> }) => Promise<unknown>>;
+  hooks?: {
+    onInvocationStart?: (event: { action: Action; surface: SurfaceName; invocationId: string; input: unknown }) => void;
+    onInvocationEnd?: (event: { action: Action; surface: SurfaceName; invocationId: string; envelope: RuntimeResult }) => void;
+  };
+  redact?: ((value: unknown) => unknown) | { keys?: string[]; placeholder?: string };
+  idempotencyCache?: Map<string, unknown>;
+  idempotencyTtlMs?: number;
+  idempotencyMaxEntries?: number;
 }
 
 export function createRuntime(options?: RuntimeOptions): ActionRuntime;
@@ -287,7 +360,7 @@ export interface ActionDescription {
   supportedSurfaces: SurfaceName[];
   timeoutMs?: number;
   retry: Required<RetryPolicy>;
-  metadata: Record<string, unknown>;
+  requiresConfirmation: boolean;
   publicMetadata: Record<string, unknown>;
   docs: ActionDocs;
   deprecated: boolean;
@@ -346,6 +419,7 @@ export interface BuildOptions {
   outDir?: string;
   appModule?: string;
   appExport?: string;
+  filename?: string;
   includePackageJson?: boolean;
   typescriptRuntime?: "tsx" | string;
   cwd?: string;
@@ -416,14 +490,36 @@ export interface HttpResponse {
   body: unknown;
 }
 
+export interface HttpRequestShape {
+  method?: string;
+  path?: string;
+  url?: string;
+  headers?: Record<string, unknown>;
+  body?: unknown;
+  user?: unknown;
+  auth?: unknown;
+  metadata?: Record<string, unknown>;
+}
+
 export interface HttpHandlerOptions {
   actions?: Action[];
   runtime?: ActionRuntime;
   runtimeOptions?: RuntimeOptions;
   basePath?: string;
+  maxBodyBytes?: number;
+  requireJsonContentType?: boolean;
   includePrivate?: boolean;
   includeLocal?: boolean;
   includeDestructive?: boolean;
+  resolveContext?: (request: { request: HttpRequestShape; body: unknown }) => {
+    user?: unknown;
+    auth?: unknown;
+    metadata?: Record<string, unknown>;
+  } | Promise<{
+    user?: unknown;
+    auth?: unknown;
+    metadata?: Record<string, unknown>;
+  }>;
 }
 
 export interface ManifestOptions {
@@ -433,13 +529,7 @@ export interface ManifestOptions {
   includeDestructive?: boolean;
 }
 
-export function createHttpHandler(options?: HttpHandlerOptions): (request: {
-  method?: string;
-  path?: string;
-  url?: string;
-  headers?: Record<string, unknown>;
-  body?: Record<string, unknown>;
-}) => Promise<HttpResponse>;
+export function createHttpHandler(options?: HttpHandlerOptions): (request: HttpRequestShape) => Promise<HttpResponse>;
 
 export function createHttpServer(options?: HttpHandlerOptions): {
   server: unknown;
@@ -480,7 +570,7 @@ export function createJsonRunner(options: { actions?: Action[]; runtime?: Action
 
 export function createMcpManifest(actions: Action[], options?: { attribution?: AppAttribution; includePrivate?: boolean; includeLocal?: boolean; includeDestructive?: boolean }): { attribution?: AppAttribution; tools: unknown[] };
 export function createMcpHandler(options: { actions?: Action[]; attribution?: AppAttribution; runtime?: ActionRuntime; runtimeOptions?: RuntimeOptions; includePrivate?: boolean; includeLocal?: boolean; includeDestructive?: boolean }): (request: unknown) => Promise<unknown>;
-export function createMcpStdioServer(options: { actions?: Action[]; attribution?: AppAttribution; runtime?: ActionRuntime; runtimeOptions?: RuntimeOptions }): {
+export function createMcpStdioServer(options: { actions?: Action[]; attribution?: AppAttribution; runtime?: ActionRuntime; runtimeOptions?: RuntimeOptions; framing?: "auto" | "content-length" | "newline"; maxFrameBytes?: number; onError?: (error: unknown) => void }): {
   start(options?: { input?: any; output?: any }): Promise<void>;
 };
 
@@ -538,6 +628,22 @@ export function createReactActionAdapter(options?: { actions?: Action[]; runtime
   runtime: ActionRuntime;
   useAction<I = unknown, O = unknown>(action: Action<I, O>): (input: I, options?: RuntimeInvokeOptions) => Promise<RuntimeResult<O>>;
 };
+export function makeInvoker<I = unknown, O = unknown>(action: Action<I, O>, options?: { actions?: Action[]; runtime?: ActionRuntime }): (input: I, options?: RuntimeInvokeOptions) => Promise<RuntimeResult<O>>;
+export function streamAction<T = unknown>(runtime: ActionRuntime, action: Action | string, input: unknown, options?: RuntimeInvokeOptions): AsyncIterableIterator<RuntimeStreamEvent<T>>;
+
+// React hook with full streaming state machine. Imported via the
+// `@ageniti/core/react-hooks` subpath, which has React as a peer dep.
+export interface UseActionState<O = unknown> {
+  status: "idle" | "loading" | "success" | "error" | "cancelled";
+  data: O | null;
+  error: { code: string; message: string; issues: ValidationIssue[]; retryable: boolean } | null;
+  logs: LogEntry[];
+  artifacts: Artifact[];
+  progress: { percent?: number; message?: string } | null;
+  invoke(input: unknown, options?: RuntimeInvokeOptions): Promise<RuntimeResult<O>>;
+  cancel(): void;
+  reset(): void;
+}
 
 export function createDevServer(options: { name?: string; actions?: Action[]; runtime: ActionRuntime }): {
   server: unknown;
@@ -576,12 +682,12 @@ export interface AgenitiApp {
   actions: Action[];
   adapters: SurfaceAdapter[];
   runtime: ActionRuntime;
-  manifest(): ReturnType<typeof createSurfaceManifest>;
+  manifest(options?: ManifestOptions): ReturnType<typeof createSurfaceManifest>;
   actionManifest(options?: ManifestOptions): ActionDescription[];
   lint(): ReturnType<typeof lintActions>;
   createCli(options?: Partial<Parameters<typeof createCli>[0]>): Cli;
   createMcpHandler(options?: Partial<Parameters<typeof createMcpHandler>[0]>): ReturnType<typeof createMcpHandler>;
-  createMcpManifest(): ReturnType<typeof createMcpManifest>;
+  createMcpManifest(options?: Parameters<typeof createMcpManifest>[1]): ReturnType<typeof createMcpManifest>;
   createJsonRunner(options?: Partial<Parameters<typeof createJsonRunner>[0]>): ReturnType<typeof createJsonRunner>;
   createHttpHandler(options?: HttpHandlerOptions): ReturnType<typeof createHttpHandler>;
   createHttpServer(options?: HttpHandlerOptions): ReturnType<typeof createHttpServer>;
@@ -591,10 +697,100 @@ export interface AgenitiApp {
   createFunctionCallingManifest(options?: LlmToolAdapterOptions): ReturnType<typeof createFunctionCallingManifest>;
   createReactAdapter(options?: Parameters<typeof createReactActionAdapter>[0]): ReturnType<typeof createReactActionAdapter>;
   createDevServer(options?: Partial<Parameters<typeof createDevServer>[0]>): ReturnType<typeof createDevServer>;
-  createGuideDoc(options?: { docs?: AppDocs; attribution?: AppAttribution }): string;
-  exportDocs(options?: { cwd?: string; outDir?: string; filename?: string; attribution?: AppAttribution }): Promise<ExportDocsResult>;
+  createGuideDoc(options?: Partial<Parameters<typeof createGuideDoc>[0]>): string;
+  exportDocs(options?: Partial<Parameters<typeof exportDocs>[0]>): Promise<ExportDocsResult>;
   build(options?: BuildOptions): Promise<BuildResult>;
   package(options?: BuildOptions & { dryRun?: boolean }): Promise<PackageResult>;
   publish(options?: PublishOptions): Promise<PublishResult>;
 }
-export function createAgenitiApp(options: RuntimeOptions & { name: string; description?: string; docs?: AppDocs; attribution?: AppAttribution; adapters?: SurfaceAdapter[]; build?: Omit<BuildOptions, "targets" | "cwd"> }): AgenitiApp;
+
+export interface CreateAgenitiAppOptions extends RuntimeOptions {
+  name: string;
+  description?: string;
+  docs?: AppDocs;
+  attribution?: AppAttribution;
+  adapters?: SurfaceAdapter[];
+  build?: Omit<BuildOptions, "targets" | "cwd">;
+  runtime?: ActionRuntime;
+}
+
+export function createAgenitiApp(options: CreateAgenitiAppOptions): AgenitiApp;
+
+// ---------- Error code constants ----------
+
+export const ERROR_CODES: {
+  readonly ACTION_NOT_FOUND: "ACTION_NOT_FOUND";
+  readonly VALIDATION_ERROR: "VALIDATION_ERROR";
+  readonly OUTPUT_VALIDATION_ERROR: "OUTPUT_VALIDATION_ERROR";
+  readonly OUTPUT_SERIALIZATION_ERROR: "OUTPUT_SERIALIZATION_ERROR";
+  readonly AUTHENTICATION_ERROR: "AUTHENTICATION_ERROR";
+  readonly AUTHORIZATION_ERROR: "AUTHORIZATION_ERROR";
+  readonly RATE_LIMITED: "RATE_LIMITED";
+  readonly TIMEOUT: "TIMEOUT";
+  readonly CANCELLED: "CANCELLED";
+  readonly CONFLICT: "CONFLICT";
+  readonly EXTERNAL_SERVICE_ERROR: "EXTERNAL_SERVICE_ERROR";
+  readonly INTERNAL_ERROR: "INTERNAL_ERROR";
+  readonly UNSUPPORTED_SURFACE: "UNSUPPORTED_SURFACE";
+  readonly UNSAFE_ACTION: "UNSAFE_ACTION";
+  readonly CONFIRMATION_REQUIRED: "CONFIRMATION_REQUIRED";
+  readonly CONCURRENCY_LIMIT: "CONCURRENCY_LIMIT";
+};
+
+// ---------- Typed client ----------
+
+export class AgenitiClientError extends Error {
+  code?: string;
+  issues: ValidationIssue[];
+  retryable: boolean;
+  envelope?: RuntimeFailure;
+  cause?: unknown;
+  constructor(envelope?: RuntimeFailure, details?: { code?: string; message?: string; retryable?: boolean; cause?: unknown });
+}
+
+export interface ClientTransport {
+  invoke(name: string, input: unknown, options?: RuntimeInvokeOptions & { raw?: boolean }): Promise<RuntimeResult>;
+  stream?(name: string, input: unknown, options?: RuntimeInvokeOptions): AsyncIterable<RuntimeStreamEvent>;
+}
+
+export interface CreateClientOptions {
+  runtime?: ActionRuntime;
+  url?: string;
+  transport?: ClientTransport;
+  surface?: SurfaceName;
+  basePath?: string;
+  fetch?: typeof fetch;
+  headers?: Record<string, string>;
+}
+
+export type AgenitiClient = {
+  $invoke<T = unknown>(name: string, input: unknown, options?: RuntimeInvokeOptions & { raw?: boolean }): Promise<T | RuntimeResult<T>>;
+  $stream<T = unknown>(name: string, input: unknown, options?: RuntimeInvokeOptions): AsyncIterable<RuntimeStreamEvent<T>>;
+  $transport: ClientTransport;
+} & Record<string, (input?: unknown, options?: RuntimeInvokeOptions & { raw?: boolean }) => Promise<unknown>>;
+
+export function createClient(options: CreateClientOptions): AgenitiClient;
+export function generateClientTypes(actions: Action[], options?: { interfaceName?: string; importFrom?: string }): string;
+export function jsonSchemaToTs(schema: unknown, indent?: number): string;
+
+// ---------- Test utilities ----------
+
+export interface TestRuntime {
+  runtime: ActionRuntime;
+  invoke(name: string, input?: unknown, options?: RuntimeInvokeOptions): Promise<RuntimeResult>;
+  stream(name: string, input?: unknown, options?: RuntimeInvokeOptions): AsyncIterableIterator<RuntimeStreamEvent>;
+}
+
+export function createTestRuntime(actions: Action[], options?: {
+  services?: Record<string, unknown>;
+  middleware?: RuntimeOptions["middleware"];
+  hooks?: RuntimeOptions["hooks"];
+  allow?: boolean | string | RuntimeOptions["permissionChecker"];
+  redact?: RuntimeOptions["redact"];
+  idempotencyCache?: Map<string, unknown>;
+}): TestRuntime;
+export function expectOk<T = unknown>(envelope: RuntimeResult<T>): T;
+export function expectError(envelope: RuntimeResult, expectedCode?: string): RuntimeFailure["error"];
+export function expectLog(envelope: RuntimeResult, predicate: string | RegExp | ((log: LogEntry) => boolean)): LogEntry;
+export function collectStream<T = unknown>(stream: AsyncIterable<RuntimeStreamEvent<T>>): Promise<RuntimeStreamEvent<T>[]>;
+export function stubAction(name: string, options?: Partial<Action>): Action;

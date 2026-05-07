@@ -12,13 +12,14 @@ export async function demoHttpGateway() {
   const invoke = await handle({
     method: "POST",
     url: "/ageniti/actions/create_task/invoke",
+    // Trusted wrappers should inject auth/user outside the request body.
+    auth: {
+      permissions: ["task:create"],
+    },
     body: {
       input: {
         title: "Write the release review summary",
         priority: "high",
-      },
-      auth: {
-        permissions: ["task:create"],
       },
     },
   });

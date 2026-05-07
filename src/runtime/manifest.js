@@ -1,3 +1,4 @@
+import { normalizeAttribution } from "./attribution.js";
 import { canExposeVisibility } from "./exposure.js";
 
 export function createActionManifest(actions, options = {}) {
@@ -25,7 +26,7 @@ export function describeAction(action) {
     supportedSurfaces: action.supportedSurfaces,
     timeoutMs: action.timeoutMs,
     retry: action.retry,
-    metadata: action.metadata,
+    requiresConfirmation: action.requiresConfirmation,
     publicMetadata: action.publicMetadata,
     docs: action.docs,
     deprecated: action.deprecated,
@@ -33,36 +34,31 @@ export function describeAction(action) {
   };
 }
 
-export function createSurfaceManifest({ appName, actions, adapters = [], attribution }) {
+export function createSurfaceManifest({
+  appName,
+  actions,
+  adapters = [],
+  attribution,
+  surface,
+  includePrivate,
+  includeLocal,
+  includeDestructive,
+}) {
   return {
     name: appName,
     generatedAt: new Date().toISOString(),
     attribution: normalizeAttribution(attribution),
-    actions: createActionManifest(actions),
+    actions: createActionManifest(actions, {
+      surface,
+      includePrivate,
+      includeLocal,
+      includeDestructive,
+    }),
     surfaces: adapters.map((adapter) => ({
       name: adapter.name,
       description: adapter.description,
       capabilities: adapter.capabilities ?? {},
     })),
-  };
-}
-
-function normalizeAttribution(attribution) {
-  if (!attribution || typeof attribution !== "object") {
-    return undefined;
-  }
-
-  if (!attribution.text) {
-    return undefined;
-  }
-
-  return {
-    text: attribution.text,
-    url: attribution.url,
-    vendor: attribution.vendor,
-    product: attribution.product,
-    docsUrl: attribution.docsUrl,
-    licenseNotice: attribution.licenseNotice,
   };
 }
 

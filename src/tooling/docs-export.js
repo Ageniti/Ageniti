@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { normalizeAttribution } from "../runtime/attribution.js";
 
 export function createGuideDoc(options) {
   const context = normalizeContext(options);
@@ -164,7 +165,7 @@ export async function exportDocs(options) {
 
 function normalizeContext(options) {
   const docs = options.docs ?? {};
-  const appDescription = options.appDescription ?? docs.summary ?? `${options.appName} exposes application capabilities for agents and automation tools.`;
+  const appDescription = options.appDescription ?? docs.summary ?? `${options.appName} exposes application capabilities to external tools, automation systems, and agent callers.`;
 
   return {
     appName: options.appName,
@@ -187,25 +188,6 @@ function normalizeContext(options) {
         outputExample: action.docs?.outputExample,
       },
     })),
-  };
-}
-
-function normalizeAttribution(attribution) {
-  if (!attribution || typeof attribution !== "object") {
-    return undefined;
-  }
-
-  if (!attribution.text) {
-    return undefined;
-  }
-
-  return {
-    text: attribution.text,
-    url: attribution.url,
-    vendor: attribution.vendor,
-    product: attribution.product,
-    docsUrl: attribution.docsUrl,
-    licenseNotice: attribution.licenseNotice,
   };
 }
 

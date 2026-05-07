@@ -29,16 +29,14 @@ import {
   diffActionManifests,
   defineAction,
   lintActions,
+  makeInvoker,
   s,
+  streamAction,
 } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
 const packageDir = path.dirname(fileURLToPath(import.meta.url));
 const buildableAppModule = path.join(packageDir, "..", "examples", "buildable-app.mjs");
-const skipNpmPublishTests = process.env.AGENITI_SKIP_NPM_PUBLISH_TEST === "1"
-  ? "Skipped in CI to avoid npm registry/network flakes."
-  : false;
-
 const add = defineAction({
   name: "add_numbers",
   description: "Add two numbers.",
@@ -108,6 +106,26 @@ test("mcp handler lists and calls tools", async () => {
   assert.equal(call.result.structuredContent.data.sum, 7);
 });
 
+test("mcp handler supports runtime-only configuration", async () => {
+  const runtime = createRuntime({ actions: [add] });
+  const handle = createMcpHandler({ runtime });
+  const list = await handle({ jsonrpc: "2.0", id: 1, method: "tools/list" });
+  const call = await handle({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: {
+      name: "add_numbers",
+      arguments: { a: 2, b: 10 },
+    },
+  });
+
+  assert.equal(list.result.tools.length, 1);
+  assert.equal(list.result.tools[0].name, "add_numbers");
+  assert.equal(call.result.structuredContent.ok, true);
+  assert.equal(call.result.structuredContent.data.sum, 12);
+});
+
 test("mcp handler blocks tools hidden from discovery", async () => {
   const hidden = defineAction({
     name: "hidden_write",
@@ -137,7 +155,54 @@ test("mcp handler blocks tools hidden from discovery", async () => {
   assert.equal(call.error.code, -32601);
 });
 
-test("public metadata is exposed consistently while internal metadata stays separate", async () => {
+test("mcp handler requires explicit confirm for destructive tools", async () => {
+  const destroy = defineAction({
+    name: "destroy_record",
+    description: "Destroy a record.",
+    sideEffects: "destructive",
+    input: s.object({ id: s.string() }),
+    output: s.object({ ok: s.boolean() }),
+    run() {
+      return { ok: true };
+    },
+  });
+
+  const handle = createMcpHandler({ actions: [destroy], includeDestructive: true });
+  const list = await handle({ jsonrpc: "2.0", id: 1, method: "tools/list" });
+  assert.equal(list.result.tools.length, 1);
+  assert.equal(list.result.tools[0].metadata.requiresConfirmation, true);
+
+  const denied = await handle({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: {
+      name: "destroy_record",
+      arguments: { id: "one" },
+    },
+  });
+  assert.equal(denied.result.structuredContent.ok, false);
+  assert.equal(denied.result.structuredContent.error.code, "CONFIRMATION_REQUIRED");
+
+  const confirmed = await handle({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: {
+      name: "destroy_record",
+      confirm: true,
+      arguments: { id: "one" },
+    },
+  });
+  assert.equal(confirmed.result.structuredContent.ok, true);
+});
+
+test("root entry re-exports headless React helpers", () => {
+  assert.equal(typeof makeInvoker, "function");
+  assert.equal(typeof streamAction, "function");
+});
+
+test("public metadata is exposed while internal metadata stays out of public manifests", async () => {
   const annotated = defineAction({
     name: "annotated_action",
     description: "Action with metadata.",
@@ -161,8 +226,9 @@ test("public metadata is exposed consistently while internal metadata stays sepa
     name: "meta-app",
     actions: [annotated],
   }).manifest();
-  assert.equal(manifest.actions[0].metadata.internalOnly, true);
+  assert.equal("metadata" in manifest.actions[0], false);
   assert.equal(manifest.actions[0].publicMetadata.category, "admin");
+  assert.equal(manifest.actions[0].requiresConfirmation, false);
 
   const mcp = createMcpManifest([annotated]);
   assert.equal(mcp.tools[0].metadata.category, "admin");
@@ -219,6 +285,7 @@ test("app attribution is exposed through manifest, cli help, mcp, and guide docs
   const aiSdk = app.createAISDKTools();
   assert.equal(aiSdk.add_numbers.metadata.attribution.licenseNotice, "Built with Ageniti SDK");
 
+
   const guide = app.createGuideDoc();
   assert.match(guide, /## Attribution/);
   assert.match(guide, /Powered by Ageniti/);
@@ -235,12 +302,118 @@ test("app attribution is exposed through manifest, cli help, mcp, and guide docs
   assert.match(output[0], /Ageniti Core/);
 });
 
+test("app actionManifest applies surface and visibility filters", () => {
+  const localDestroy = defineAction({
+    name: "local_destroy",
+    description: "Destroy local data.",
+    visibility: "local",
+    sideEffects: "destructive",
+    supportedSurfaces: ["http", "mcp"],
+    input: s.object({ id: s.string() }),
+    output: s.object({ ok: s.boolean() }),
+    run() {
+      return { ok: true };
+    },
+  });
+
+  const app = createAgenitiApp({
+    name: "filtered-app",
+    actions: [add, localDestroy],
+  });
+
+  assert.deepEqual(app.actionManifest({ surface: "http" }).map((action) => action.name), ["add_numbers"]);
+  assert.deepEqual(
+    app.actionManifest({ surface: "http", includeLocal: true, includeDestructive: true }).map((action) => action.name),
+    ["add_numbers", "local_destroy"],
+  );
+  assert.deepEqual(
+    app.manifest({ surface: "http", includeLocal: true, includeDestructive: true }).actions.map((action) => action.name),
+    ["add_numbers", "local_destroy"],
+  );
+});
+
+test("runtime deduplicates concurrent idempotent writes with the same scope", async () => {
+  let runs = 0;
+  const createTask = defineAction({
+    name: "create_task",
+    description: "Create a task once.",
+    sideEffects: "write",
+    input: s.object({ title: s.string() }),
+    output: s.object({ id: s.string() }),
+    run: async ({ title }) => {
+      runs += 1;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return { id: `task:${title}` };
+    },
+  });
+
+  const runtime = createRuntime({ actions: [createTask] });
+  const [first, second] = await Promise.all([
+    runtime.invoke("create_task", { title: "Ship" }, {
+      surface: "http",
+      confirm: true,
+      idempotencyKey: "same-key",
+    }),
+    runtime.invoke("create_task", { title: "Ship" }, {
+      surface: "http",
+      confirm: true,
+      idempotencyKey: "same-key",
+    }),
+  ]);
+
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.equal(runs, 1);
+  assert.deepEqual(first.data, { id: "task:Ship" });
+  assert.deepEqual(second.data, { id: "task:Ship" });
+  assert.equal(second.meta.idempotent, "replayed");
+});
+
+test("app factory forwards runtime hooks, redaction, and idempotency cache options", async () => {
+  let started = 0;
+  const cache = new Map();
+  const writeSecret = defineAction({
+    name: "write_secret",
+    description: "Write a secret value.",
+    sideEffects: "write",
+    input: s.object({ apiKey: s.string() }),
+    output: s.object({ ok: s.boolean() }),
+    run(input, ctx) {
+      ctx.logger.info("Writing secret.", { apiKey: input.apiKey });
+      return { ok: true };
+    },
+  });
+
+  const app = createAgenitiApp({
+    name: "secure-app",
+    actions: [writeSecret],
+    hooks: {
+      onInvocationStart() {
+        started += 1;
+      },
+    },
+    redact: { keys: ["apiKey"] },
+    idempotencyCache: cache,
+  });
+
+  const result = await app.runtime.invoke("write_secret", { apiKey: "sekret" }, {
+    surface: "http",
+    confirm: true,
+    idempotencyKey: "secret-write",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(started, 1);
+  assert.equal(result.logs[0].fields.apiKey, "[REDACTED]");
+  assert.equal(cache.size, 1);
+});
+
 test("cli forwards attribution through manifest, docs, build, and mcp outputs", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ageniti-cli-attribution-"));
   const outDir = path.join(tempDir, "bundle");
   const cli = createCli({
     name: "math",
-    description: "Math actions packaged for agent hosts.",
+    description: "Math actions exposed to external hosts and agent callers.",
     docs: {
       summary: "Use math actions to perform safe arithmetic.",
     },
@@ -299,6 +472,30 @@ test("cli forwards attribution through manifest, docs, build, and mcp outputs", 
   const mcpManifest = JSON.parse(mcpOutput[0]);
   assert.equal(mcpManifest.attribution.vendor, "Ageniti");
   assert.equal(mcpManifest.tools[0].metadata.attribution.text, "Powered by Ageniti");
+});
+
+test("cli build docs honors --filename", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "ageniti-cli-build-docs-"));
+  const outDir = path.join(tempDir, "docs");
+  const cli = createCli({
+    name: "math",
+    description: "Math actions exposed to external hosts and agent callers.",
+    docs: {
+      summary: "Guide summary for math.",
+    },
+    actions: [add],
+  });
+
+  const output = [];
+  const code = await cli.run(["build", "docs", "--cwd", tempDir, "--out-dir", outDir, "--filename", "CUSTOM.md"], {
+    stdout: (value) => output.push(value),
+    stderr: () => {},
+  });
+  assert.equal(code, 0);
+  const result = JSON.parse(output[0]);
+  assert.equal(result.files.some((file) => file.path.endsWith(path.join("docs", "CUSTOM.md"))), true);
+  const guide = await readFile(path.join(outDir, "CUSTOM.md"), "utf8");
+  assert.match(guide, /Guide summary for math/);
 });
 
 test("action manifests include versioning and deprecation metadata", () => {
@@ -381,6 +578,26 @@ test("http handler exposes structured action discovery and invocation", async ()
   assert.equal(call.body.data.sum, 13);
 });
 
+test("http handler supports runtime-only configuration", async () => {
+  const runtime = createRuntime({ actions: [add] });
+  const handle = createHttpHandler({ runtime });
+  const list = await handle({ method: "GET", path: "/ageniti/actions" });
+  const call = await handle({
+    method: "POST",
+    path: "/ageniti/actions/add_numbers/invoke",
+    body: {
+      input: { a: 5, b: 7 },
+    },
+  });
+
+  assert.equal(list.status, 200);
+  assert.equal(list.body.actions.length, 1);
+  assert.equal(list.body.actions[0].name, "add_numbers");
+  assert.equal(call.status, 200);
+  assert.equal(call.body.ok, true);
+  assert.equal(call.body.data.sum, 12);
+});
+
 test("destructive actions require explicit confirmation outside UI/dev surfaces", async () => {
   const destroy = defineAction({
     name: "destroy_thing",
@@ -459,6 +676,18 @@ test("app factory creates shared surfaces from one action list", async () => {
   assert.match(app.createGuideDoc(), /Use math actions to perform safe arithmetic/);
 });
 
+test("app factory derives actions from a provided runtime", async () => {
+  const runtime = createRuntime({ actions: [add] });
+  const app = createAgenitiApp({
+    name: "math",
+    runtime,
+  });
+
+  assert.equal(app.actions[0].name, "add_numbers");
+  assert.equal(app.manifest().actions[0].name, "add_numbers");
+  assert.equal(app.createMcpManifest().tools[0].name, "add_numbers");
+});
+
 test("app build writes official bundle artifacts", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ageniti-build-"));
   const outDir = path.join(tempDir, "bundle");
@@ -515,7 +744,7 @@ test("exportDocs writes a single GUIDE document", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ageniti-guide-"));
   const result = await exportDocs({
     appName: "math",
-    appDescription: "Math actions packaged for agent hosts.",
+    appDescription: "Math actions exposed to external hosts and agent callers.",
     docs: {
       summary: "This app exposes simple arithmetic actions.",
       quickStart: ["Pick an action.", "Provide valid input.", "Read the structured result."],
@@ -565,7 +794,71 @@ test("packageArtifacts creates a distributable npm tarball", async () => {
   assert.equal(descriptor.snippets.codex.mcpServers["math-server"].args[0], "./mcp-stdio.mjs");
 });
 
-test("publishArtifacts performs an npm publish dry-run", { skip: skipNpmPublishTests }, async () => {
+test("published SDK tarball can be installed, imported, and executed through the published CLI", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "ageniti-package-install-"));
+  const consumerDir = await mkdtemp(path.join(tempDir, "consumer-"));
+  const sdkRoot = path.join(packageDir, "..");
+  const { stdout: packStdout } = await execFileAsync("npm", [
+    "pack",
+    "--ignore-scripts",
+    "--pack-destination",
+    tempDir,
+    "--cache",
+    path.join(tempDir, ".npm-cache"),
+  ], {
+    cwd: sdkRoot,
+  });
+  const tarballName = packStdout.trim().split("\n").pop();
+  const tarballPath = path.join(tempDir, tarballName);
+
+  await writeFile(path.join(consumerDir, "package.json"), JSON.stringify({
+    name: "consumer",
+    private: true,
+    type: "module",
+  }, null, 2));
+
+  await execFileAsync("npm", ["install", "--ignore-scripts", tarballPath], {
+    cwd: consumerDir,
+    env: {
+      ...process.env,
+      npm_config_cache: path.join(tempDir, ".npm-cache"),
+    },
+  });
+
+  const { stdout } = await execFileAsync(process.execPath, [
+    "--input-type=module",
+    "-e",
+    [
+      "const core = await import('@ageniti/core');",
+      "const aiSdk = await import('@ageniti/core/ai-sdk');",
+      "const http = await import('@ageniti/core/http');",
+      "const schemaAdapter = await import('@ageniti/core/schema-adapter');",
+      "console.log(JSON.stringify({",
+      "  core: typeof core.defineAction,",
+      "  aiSdk: typeof aiSdk.createAISDKTools,",
+      "  http: typeof http.createHttpHandler,",
+      "  schemaAdapter: typeof schemaAdapter.wrapSchema,",
+      "}));",
+    ].join(" "),
+  ], { cwd: consumerDir });
+
+  assert.deepEqual(JSON.parse(stdout), {
+    core: "function",
+    aiSdk: "function",
+    http: "function",
+    schemaAdapter: "function",
+  });
+
+  const { stdout: cliStdout } = await execFileAsync(process.execPath, [
+    "./node_modules/.bin/ageniti",
+    "--help",
+  ], { cwd: consumerDir });
+
+  assert.match(cliStdout, /Usage:/);
+  assert.match(cliStdout, /ageniti/);
+});
+
+test("publishArtifacts performs an npm publish dry-run", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ageniti-publish-"));
   const outDir = path.join(tempDir, "bundle");
 
@@ -764,7 +1057,7 @@ test("cli docs prints or exports the unified guide", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ageniti-cli-docs-"));
   const cli = createCli({
     name: "math",
-    description: "Math actions for agents.",
+    description: "Math actions for external tools, automation, and agent callers.",
     docs: {
       summary: "Guide summary for math.",
     },
@@ -854,7 +1147,7 @@ test("cli package creates a bundle tarball", async () => {
   assert.match(result.packageFile, /math-ageniti-0\.0\.0\.tgz$/);
 });
 
-test("cli publish performs a dry-run by default", { skip: skipNpmPublishTests }, async () => {
+test("cli publish performs a dry-run by default", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ageniti-cli-publish-"));
   const output = [];
   const errors = [];
@@ -919,6 +1212,9 @@ test("initProject scaffolds UI and host templates", async () => {
   assert.match(openaiReadme, /OpenAI Responses/);
   const aiSdkReadme = await readFile(path.join(aiSdkDir, "src", "ageniti", "README.md"), "utf8");
   assert.match(aiSdkReadme, /AI SDK/);
+  const httpStarter = await readFile(path.join(httpDir, "src", "ageniti", "host-http.js"), "utf8");
+  assert.match(httpStarter, /auth:\s*\{\s*permissions:/);
+  assert.doesNotMatch(httpStarter, /body:\s*\{[\s\S]*auth:/);
 });
 
 test("doctorProject reports React project readiness", async () => {
@@ -1007,7 +1303,7 @@ test("lint reports risky action contracts", () => {
 
 test("dev server exposes action manifest and invocation API", async (t) => {
   const runtime = createRuntime({ actions: [add] });
-  const dev = createDevServer({ name: "math", actions: [add], runtime });
+  const dev = createDevServer({ name: "math", runtime });
   let listener;
 
   try {
@@ -1037,6 +1333,18 @@ test("dev server exposes action manifest and invocation API", async (t) => {
   } finally {
     await listener.close();
   }
+});
+
+test("cli manifest derives actions from a provided runtime", async () => {
+  const runtime = createRuntime({ actions: [add] });
+  const output = [];
+  const code = await createCli({ name: "math", runtime }).run(["manifest"], {
+    stdout: (value) => output.push(value),
+    stderr: () => {},
+  });
+
+  assert.equal(code, 0);
+  assert.equal(JSON.parse(output[0]).actions[0].name, "add_numbers");
 });
 
 test("ai sdk adapters expose OpenAI-compatible tool specs", () => {

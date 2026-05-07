@@ -73,7 +73,7 @@ export const createTask = defineAction({
 
 export const app = createAgenitiApp({
   name: "task-app",
-  description: "Workspace task operations packaged for agent hosts.",
+  description: "Workspace task operations exposed to external hosts and agent callers.",
   actions: [createTask],
   services: {
     tasks,
@@ -115,7 +115,7 @@ Do not import React components, browser-only APIs, route handlers, or mobile run
 - Put secrets, internal identifiers, and non-public implementation notes in `metadata`, not `publicMetadata`.
 - Put host-facing instructions in `description`, `docs`, and `publicMetadata`.
 - Prefer small action inputs with explicit schemas, examples, and output schemas.
-- Treat `GUIDE.md`, manifests, schemas, and action metadata as the public contract.
+- Treat `GUIDE.md`, manifests, schemas, and `publicMetadata` as the public contract.
 
 ## Documentation Export
 
