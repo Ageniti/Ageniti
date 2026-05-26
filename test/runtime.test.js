@@ -10,29 +10,29 @@ import {
   AgenitiError,
   createAgenitiApp,
   createAISDKTools,
-  buildArtifacts,
-  packageArtifacts,
-  publishArtifacts,
-  exportDocs,
-  loadProjectConfig,
-  doctorProject,
   createCli,
   createDevServer,
   createHttpHandler,
-  findDefaultAppModule,
-  initProject,
   createOpenAIResponsesTools,
   createOpenAITools,
   createMcpHandler,
   createMcpManifest,
   createRuntime,
-  diffActionManifests,
   defineAction,
-  lintActions,
   makeInvoker,
   s,
   streamAction,
 } from "../src/index.js";
+import { buildArtifacts, packageArtifacts, publishArtifacts } from "../src/tooling/build.js";
+import { exportDocs } from "../src/tooling/docs-export.js";
+import {
+  doctorProject,
+  findDefaultAppModule,
+  initProject,
+  loadProjectConfig,
+} from "../src/tooling/project-tools.js";
+import { diffActionManifests } from "../src/runtime/manifest.js";
+import { lintActions } from "../src/tooling/lint.js";
 
 const execFileAsync = promisify(execFile);
 const packageDir = path.dirname(fileURLToPath(import.meta.url));

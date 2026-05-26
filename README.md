@@ -38,6 +38,12 @@ and any caller (CLI, HTTP, MCP, OpenAI / AI SDK tools, React UI, your own
 typed client) can invoke it through the same runtime, with the same
 streaming events, the same redaction, the same error contract.
 
+> **Stability — pre-1.0.** Ageniti is currently `0.x`. The action contract and
+> primary surfaces (CLI, HTTP, MCP, AI SDK) are stable enough for real use, but
+> minor versions may still introduce breaking changes to export shape, adapter
+> APIs, or manifest format until `1.0`. Pin an exact version (`@ageniti/core@0.1.x`)
+> in production and read the [CHANGELOG](./CHANGELOG.md) before upgrading.
+
 ## Why Ageniti
 
 Modern apps want to be callable not just from people but from agents, scripts,

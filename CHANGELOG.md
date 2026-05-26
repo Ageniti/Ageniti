@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.0
+
+Surface-area cleanup and type integrity. Pre-1.0 breaking change.
+
+### Breaking
+
+- The following tool-chain APIs are no longer re-exported from `@ageniti/core`. Import them from their subpath instead — the runtime modules and behavior are unchanged:
+  - `buildArtifacts`, `packageArtifacts`, `publishArtifacts` → `@ageniti/core/build`
+  - `createGuideDoc`, `exportDocs` → `@ageniti/core/docs`
+  - `initProject`, `doctorProject`, `loadProjectConfig`, `findDefaultAppModule`, `detectTypeScriptRuntime`, `supportsTypeScriptEntrypoints` → `@ageniti/core/project`
+  - `lintActions` → `@ageniti/core/lint`
+  - `describeAction`, `createSurfaceManifest`, `diffActionManifests` → `@ageniti/core/manifest`
+
+  The main entry now exposes only runtime-facing primitives (action definition, runtime, adapters, transports, schema, client, test utilities). This keeps the SDK's hot path lean and isolates dev/build tooling behind explicit imports.
+
+### Added
+
+- `tsconfig.json` and `npm run typecheck` validate the source tree as part of `npm run ci` and `prepack`.
+- `test/types-drift.test.js` fails CI if `src/index.d.ts` is missing a declaration for any runtime export from `src/index.js`.
+- New `test:unit` and `test:e2e` scripts split the suite into fast (logic + drift, ~5s) and slower (build/publish/host examples) groups. `prepack` now runs `test:unit` + `typecheck` only.
+- New subpath exports: `@ageniti/core/build`, `@ageniti/core/docs`, `@ageniti/core/project`.
+- `zodToJsonSchema` is now declared in `src/index.d.ts` (previously runtime-only).
+
+### Changed
+
+- `src/index.d.ts` no longer declares the moved tool-chain functions; their type declarations live in `src/types/subpaths.d.ts` next to the corresponding subpath module.
+- README now carries an explicit pre-1.0 stability notice recommending an exact-version pin.
+
 ## 0.1.2
 
 SDK structure and release workflow update.

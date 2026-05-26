@@ -1,6 +1,6 @@
 {
   "name": "@ageniti/core",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Expose React and TypeScript app actions as CLI, HTTP, MCP, OpenAI, and AI SDK tools without restructuring your app.",
   "type": "module",
   "private": false,
@@ -125,12 +125,27 @@
       "types": "./src/types/subpaths.d.ts",
       "default": "./src/schema/schema-adapter.js"
     },
+    "./build": {
+      "types": "./src/types/subpaths.d.ts",
+      "default": "./src/tooling/build.js"
+    },
+    "./docs": {
+      "types": "./src/types/subpaths.d.ts",
+      "default": "./src/tooling/docs-export.js"
+    },
+    "./project": {
+      "types": "./src/types/subpaths.d.ts",
+      "default": "./src/tooling/project-tools.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
-    "ci": "npm test && npm pack --dry-run --ignore-scripts --cache ./.npm-cache",
+    "ci": "npm test && npm run typecheck && npm pack --dry-run --ignore-scripts --cache ./.npm-cache",
     "test": "node --test",
-    "prepack": "npm test",
+    "test:unit": "node --test test/agentic-primitives.test.js test/hardening.test.js test/types-drift.test.js",
+    "test:e2e": "node --test test/runtime.test.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "prepack": "npm run test:unit && npm run typecheck",
     "pack:dry": "npm test && npm pack --dry-run --ignore-scripts --cache ./.npm-cache",
     "example": "node examples/hello.cli.js",
     "demo": "node examples/demo.cli.js",

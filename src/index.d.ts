@@ -254,6 +254,7 @@ export interface WrapSchemaOptions {
 export function wrapSchema(schema: unknown, options?: WrapSchemaOptions): Schema;
 export function isZodLike(value: unknown): boolean;
 export function isStandardSchemaV1(value: unknown): boolean;
+export function zodToJsonSchema(schema: unknown): JsonObject;
 
 export class AgenitiError extends Error {
   code: string;
@@ -450,7 +451,7 @@ export interface BuildResult {
   };
 }
 
-export function buildArtifacts(options: BuildOptions & { appName: string; actions: Action[]; adapters?: SurfaceAdapter[] }): Promise<BuildResult>;
+// Moved to "@ageniti/core/build" — see src/types/subpaths.d.ts
 
 export interface PackageResult {
   ok: true;
@@ -460,9 +461,8 @@ export interface PackageResult {
   build: BuildResult;
 }
 
-export function packageArtifacts(options: BuildOptions & { appName: string; actions: Action[]; adapters?: SurfaceAdapter[]; dryRun?: boolean }): Promise<PackageResult>;
-export function createGuideDoc(options: { appName: string; appDescription?: string; docs?: AppDocs; actions?: Action[]; attribution?: AppAttribution }): string;
-export function exportDocs(options: { appName: string; appDescription?: string; docs?: AppDocs; actions?: Action[]; attribution?: AppAttribution; cwd?: string; outDir?: string; filename?: string }): Promise<ExportDocsResult>;
+// packageArtifacts moved to "@ageniti/core/build"
+// createGuideDoc, exportDocs moved to "@ageniti/core/docs"
 
 export interface PublishOptions extends BuildOptions {
   dryRun?: boolean;
@@ -482,7 +482,7 @@ export interface PublishResult {
   build: BuildResult;
 }
 
-export function publishArtifacts(options: PublishOptions & { appName: string; actions: Action[]; adapters?: SurfaceAdapter[] }): Promise<PublishResult>;
+// publishArtifacts moved to "@ageniti/core/build"
 
 export interface HttpResponse {
   status: number;
@@ -556,12 +556,9 @@ export interface InitProjectResult {
   nextSteps: string[];
 }
 
-export function loadProjectConfig(options?: { cwd?: string }): Promise<{ attribution?: AppAttribution; build?: BuildOptions; mcp?: { transport?: string; env?: Record<string, string> }; package?: PackageMetadata; configPath: string } | undefined>;
-export function findDefaultAppModule(options?: { cwd?: string; config?: { build?: BuildOptions } }): Promise<{ found: boolean; modulePath?: string; reason: "configured" | "node-safe-default" | "typescript-only-entry" | "missing" }>;
-export function detectTypeScriptRuntime(options?: { packageJson?: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> }; config?: { build?: BuildOptions } }): string | undefined;
-export function supportsTypeScriptEntrypoints(options?: { packageJson?: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> }; config?: { build?: BuildOptions } }): boolean;
-export function doctorProject(options?: { cwd?: string }): Promise<ProjectDoctorResult>;
-export function initProject(options?: { cwd?: string; template?: "react" | "expo" | "next" | "host-openai" | "host-ai-sdk" | "host-mcp" | "host-http"; force?: boolean }): Promise<InitProjectResult>;
+// loadProjectConfig, findDefaultAppModule, detectTypeScriptRuntime,
+// supportsTypeScriptEntrypoints, doctorProject, initProject all moved to
+// "@ageniti/core/project" — see src/types/subpaths.d.ts
 
 export function createJsonRunner(options: { actions?: Action[]; runtime?: ActionRuntime; runtimeOptions?: RuntimeOptions }): {
   runtime: ActionRuntime;
@@ -650,8 +647,10 @@ export function createDevServer(options: { name?: string; actions?: Action[]; ru
   listen(port?: number, host?: string): Promise<{ port: number; host: string; url: string; close(): Promise<void> }>;
 };
 
-export function describeAction(action: Action): ActionDescription;
-export function diffActionManifests(previous: ActionDescription[] | { actions: ActionDescription[] }, next: ActionDescription[] | { actions: ActionDescription[] }): {
+// describeAction, diffActionManifests, createSurfaceManifest moved to "@ageniti/core/manifest"
+// lintActions moved to "@ageniti/core/lint"
+// See src/types/subpaths.d.ts for declarations.
+export type ManifestDiff = {
   ok: boolean;
   summary: { breaking: number; warnings: number; info: number };
   changes: Array<{
@@ -664,7 +663,8 @@ export function diffActionManifests(previous: ActionDescription[] | { actions: A
     message: string;
   }>;
 };
-export function createSurfaceManifest(options: { appName: string; actions: Action[]; adapters?: SurfaceAdapter[]; attribution?: AppAttribution } & ManifestOptions): {
+
+export type SurfaceManifest = {
   name: string;
   generatedAt: string;
   attribution?: AppAttribution;
@@ -672,7 +672,7 @@ export function createSurfaceManifest(options: { appName: string; actions: Actio
   surfaces: Array<{ name: string; description: string; capabilities: Record<string, unknown> }>;
 };
 
-export function lintActions(actions: Action[]): {
+export type LintResult = {
   ok: boolean;
   findings: Array<{ level: "error" | "warning"; action: string; code: string; message: string }>;
 };

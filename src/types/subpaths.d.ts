@@ -39,7 +39,16 @@ declare module "@ageniti/core/http" {
 }
 
 declare module "@ageniti/core/manifest" {
-  export { createSurfaceManifest, describeAction, diffActionManifests } from "../index.js";
+  import type { Action, ActionDescription, AppAttribution, SurfaceAdapter, ManifestDiff, SurfaceManifest, ManifestOptions } from "../index.js";
+
+  export function describeAction(action: Action): ActionDescription;
+  export function diffActionManifests(
+    previous: ActionDescription[] | { actions: ActionDescription[] },
+    next: ActionDescription[] | { actions: ActionDescription[] },
+  ): ManifestDiff;
+  export function createSurfaceManifest(
+    options: { appName: string; actions: Action[]; adapters?: SurfaceAdapter[]; attribution?: AppAttribution } & ManifestOptions,
+  ): SurfaceManifest;
 }
 
 declare module "@ageniti/core/json-runner" {
@@ -47,7 +56,9 @@ declare module "@ageniti/core/json-runner" {
 }
 
 declare module "@ageniti/core/lint" {
-  export { lintActions } from "../index.js";
+  import type { Action, LintResult } from "../index.js";
+
+  export function lintActions(actions: Action[]): LintResult;
 }
 
 declare module "@ageniti/core/mcp" {
@@ -106,4 +117,108 @@ declare module "@ageniti/core/test-utils" {
 
 declare module "@ageniti/core/handlers" {
   export { actionFromHandler, actionsFromHandlers, defineActions } from "../index.js";
+}
+
+declare module "@ageniti/core/build" {
+  import type {
+    Action,
+    AppAttribution,
+    AppDocs,
+    BuildOptions,
+    BuildResult,
+    PackageMetadata,
+    PackageResult,
+    PublishOptions,
+    PublishResult,
+    SurfaceAdapter,
+  } from "../index.js";
+
+  export type {
+    BuildOptions,
+    BuildResult,
+    PackageMetadata,
+    PackageResult,
+    PublishOptions,
+    PublishResult,
+  } from "../index.js";
+
+  export function buildArtifacts(
+    options: BuildOptions & { appName: string; actions: Action[]; adapters?: SurfaceAdapter[] },
+  ): Promise<BuildResult>;
+  export function packageArtifacts(
+    options: BuildOptions & { appName: string; actions: Action[]; adapters?: SurfaceAdapter[]; dryRun?: boolean },
+  ): Promise<PackageResult>;
+  export function publishArtifacts(
+    options: PublishOptions & { appName: string; actions: Action[]; adapters?: SurfaceAdapter[] },
+  ): Promise<PublishResult>;
+}
+
+declare module "@ageniti/core/docs" {
+  import type { Action, AppAttribution, AppDocs, ExportDocsResult } from "../index.js";
+
+  export type { ExportDocsResult } from "../index.js";
+
+  export function createGuideDoc(options: {
+    appName: string;
+    appDescription?: string;
+    docs?: AppDocs;
+    actions?: Action[];
+    attribution?: AppAttribution;
+  }): string;
+
+  export function exportDocs(options: {
+    appName: string;
+    appDescription?: string;
+    docs?: AppDocs;
+    actions?: Action[];
+    attribution?: AppAttribution;
+    cwd?: string;
+    outDir?: string;
+    filename?: string;
+  }): Promise<ExportDocsResult>;
+}
+
+declare module "@ageniti/core/project" {
+  import type {
+    AppAttribution,
+    BuildOptions,
+    InitProjectResult,
+    PackageMetadata,
+    ProjectDoctorResult,
+  } from "../index.js";
+
+  export type { InitProjectResult, ProjectDoctorResult } from "../index.js";
+
+  export function loadProjectConfig(options?: { cwd?: string }): Promise<
+    | {
+        attribution?: AppAttribution;
+        build?: BuildOptions;
+        mcp?: { transport?: string; env?: Record<string, string> };
+        package?: PackageMetadata;
+        configPath: string;
+      }
+    | undefined
+  >;
+  export function findDefaultAppModule(options?: {
+    cwd?: string;
+    config?: { build?: BuildOptions };
+  }): Promise<{
+    found: boolean;
+    modulePath?: string;
+    reason: "configured" | "node-safe-default" | "typescript-only-entry" | "missing";
+  }>;
+  export function detectTypeScriptRuntime(options?: {
+    packageJson?: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    config?: { build?: BuildOptions };
+  }): string | undefined;
+  export function supportsTypeScriptEntrypoints(options?: {
+    packageJson?: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    config?: { build?: BuildOptions };
+  }): boolean;
+  export function doctorProject(options?: { cwd?: string }): Promise<ProjectDoctorResult>;
+  export function initProject(options?: {
+    cwd?: string;
+    template?: "react" | "expo" | "next" | "host-openai" | "host-ai-sdk" | "host-mcp" | "host-http";
+    force?: boolean;
+  }): Promise<InitProjectResult>;
 }
