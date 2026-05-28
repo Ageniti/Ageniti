@@ -12,6 +12,14 @@
   the invocation logic be unit-tested without a React renderer and makes the
   same logic reusable for future non-React bindings.
 
+### Release / Supply chain
+
+- Added `.github/workflows/release.yml`: publishing is now an automated
+  pipeline triggered by a GitHub Release. It verifies the release tag matches
+  `package.json`, runs tests + typecheck, and publishes with
+  `npm publish --provenance --access public` so the npm package page shows a
+  verifiable provenance attestation. Documented in `docs/release-checklist.md`.
+
 ### Tests / CI
 
 - Added `test/react.test.js` covering the React-free bindings (`makeInvoker`,
