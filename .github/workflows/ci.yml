@@ -13,6 +13,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # engines requires Node >=20; verify the full supported range.
+        node-version: [20, 22, 24]
+    name: test (Node ${{ matrix.node-version }})
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -20,11 +26,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ matrix.node-version }}
           registry-url: https://registry.npmjs.org
 
-      - name: Run tests
-        run: npm test
+      - name: Run tests with coverage
+        run: npm run test:coverage
 
       - name: Verify package contents
         run: npm pack --dry-run --ignore-scripts --cache ./.npm-cache
