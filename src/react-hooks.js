@@ -7,6 +7,7 @@
 //   const { invoke, status, data, logs } = useAction(myAction, { runtime });
 
 import * as React from "react";
+import { initialActionState, reduceActionEvent } from "./runtime/action-state.js";
 
 // useAction(action, { runtime })
 //
@@ -18,6 +19,11 @@ import * as React from "react";
 // While loading, logs/artifacts/progress update live as the runtime emits
 // streaming events. Call cancel() to abort the in-flight invocation, or
 // reset() to wipe state back to idle.
+//
+// This hook is intentionally thin: all state-transition logic lives in the
+// framework-agnostic reducer in ./runtime/action-state.js (which is unit
+// tested without React). The hook only wires runtime.stream() events into
+// React state and manages React lifecycle concerns (mount, invocation race).
 export function useAction(action, options = {}) {
   const { useState, useRef, useCallback, useEffect } = React;
 
@@ -26,14 +32,7 @@ export function useAction(action, options = {}) {
     throw new Error("useAction(): pass { runtime }.");
   }
 
-  const [state, setState] = useState({
-    status: "idle",
-    data: null,
-    error: null,
-    logs: [],
-    artifacts: [],
-    progress: null,
-  });
+  const [state, setState] = useState(initialActionState);
 
   const controllerRef = useRef(null);
   const externalAbortCleanupRef = useRef(null);
@@ -72,13 +71,13 @@ export function useAction(action, options = {}) {
   const cancel = useCallback(() => {
     const invocationId = invocationRef.current;
     clearInFlight();
-    safeSet((prev) => (prev.status === "loading" ? { ...prev, status: "cancelled" } : prev), invocationId);
+    safeSet((prev) => reduceActionEvent(prev, { type: "cancel" }), invocationId);
   }, [clearInFlight, safeSet]);
 
   const reset = useCallback(() => {
     clearInFlight({ clearController: true });
     invocationRef.current += 1;
-    safeSet({ status: "idle", data: null, error: null, logs: [], artifacts: [], progress: null });
+    safeSet(initialActionState());
   }, [clearInFlight, safeSet]);
 
   const invoke = useCallback(async (input, callOptions = {}) => {
@@ -102,14 +101,7 @@ export function useAction(action, options = {}) {
       externalAbortCleanupRef.current = null;
     }
 
-    safeSet({
-      status: "loading",
-      data: null,
-      error: null,
-      logs: [],
-      artifacts: [],
-      progress: null,
-    }, invocationId);
+    safeSet((prev) => reduceActionEvent(prev, { type: "start" }), invocationId);
 
     const events = runtime.stream(action, input, {
       surface: callOptions.surface ?? "react",
@@ -148,28 +140,13 @@ export function useAction(action, options = {}) {
           envelope = makeCancelledEnvelope();
           break;
         }
-        if (event.type === "log") {
-          safeSet((prev) => ({ ...prev, logs: [...prev.logs, event] }), invocationId);
-        } else if (event.type === "artifact") {
-          safeSet((prev) => ({ ...prev, artifacts: [...prev.artifacts, event.artifact] }), invocationId);
-        } else if (event.type === "progress") {
-          safeSet((prev) => ({ ...prev, progress: { percent: event.percent, message: event.message } }), invocationId);
-        } else if (event.type === "result") {
+        if (event.type === "result") {
           envelope = event.envelope;
-          if (envelope.ok) {
-            safeSet((prev) => ({ ...prev, status: "success", data: envelope.data }), invocationId);
-          } else if (envelope.error?.code === "CANCELLED") {
-            // Either the user called cancel() or an external abort fired.
-            // Either way, the terminal state is "cancelled", not "error".
-            safeSet((prev) => ({ ...prev, status: "cancelled", error: envelope.error }), invocationId);
-          } else {
-            // Don't downgrade an already-cancelled status to "error" if a
-            // residual non-cancel envelope arrives during teardown.
-            safeSet((prev) => prev.status === "cancelled"
-              ? prev
-              : { ...prev, status: "error", error: envelope.error }, invocationId);
-          }
         }
+        // All state-transition logic lives in the framework-agnostic reducer.
+        // For unhandled event types it returns the same state reference, so
+        // React bails out of the re-render.
+        safeSet((prev) => reduceActionEvent(prev, event), invocationId);
       }
     } finally {
       cleanupExternalAbort();

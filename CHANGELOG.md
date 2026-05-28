@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Extracted the `useAction` state machine into a framework-agnostic reducer at
+  `src/runtime/action-state.js` (`initialActionState`, `reduceActionEvent`,
+  `reduceResult`). The React hook in `src/react-hooks.js` is now a thin binding
+  that drives this reducer from `runtime.stream()` events and only owns React
+  lifecycle concerns (mount, invocation race). Behavior is unchanged. This lets
+  the invocation logic be unit-tested without a React renderer and makes the
+  same logic reusable for future non-React bindings.
+
+### Tests / CI
+
+- Added `test/react.test.js` covering the React-free bindings (`makeInvoker`,
+  `streamAction`, `createReactActionAdapter`): `src/react.js` now at 100% line
+  and function coverage (was 46% / 0%).
+- Added `test/action-state.test.js` covering the extracted state machine at
+  100%, including the cancelled-vs-error terminal rule and the "don't downgrade
+  an already-cancelled state" guard.
+- Added `test:coverage` script using Node's built-in coverage (zero deps).
+- CI now runs the test suite with coverage on Node 20, 22, and 24 (matching
+  `engines: >=20`) instead of smoke-testing Node 20 only.
+
 ## 0.2.0
 
 Surface-area cleanup and type integrity. Pre-1.0 breaking change.

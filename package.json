@@ -142,7 +142,7 @@
   "scripts": {
     "ci": "npm test && npm run typecheck && npm pack --dry-run --ignore-scripts --cache ./.npm-cache",
     "test": "node --test",
-    "test:unit": "node --test test/agentic-primitives.test.js test/hardening.test.js test/react.test.js test/types-drift.test.js",
+    "test:unit": "node --test test/action-state.test.js test/agentic-primitives.test.js test/hardening.test.js test/react.test.js test/types-drift.test.js",
     "test:coverage": "node --test --experimental-test-coverage",
     "test:e2e": "node --test test/runtime.test.js",
     "typecheck": "tsc -p tsconfig.json",
